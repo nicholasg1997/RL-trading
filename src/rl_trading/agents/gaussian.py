@@ -51,5 +51,3 @@ class GaussianActor(BaseActor):
 		log_prob = log_prob.sum(1, keepdim=True)
 
 		return action, log_prob
-
-

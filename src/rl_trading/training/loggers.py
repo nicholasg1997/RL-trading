@@ -1,5 +1,4 @@
 from abc import ABC
-from pathlib import Path
 
 
 class BaseLogger(ABC):

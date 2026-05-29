@@ -1,5 +1,5 @@
 from abc import ABC
-from .configs.data_classes import Transition
+from ..configs.data_classes import Transition
 import torch
 
 import numpy as np

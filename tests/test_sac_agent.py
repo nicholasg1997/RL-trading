@@ -3,10 +3,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from sac.agents.sac import SACAgent
-from sac.buffer import ReplayBuffer
-from sac.configs.data_classes import ModelParameters, OffPolicyConfig
-from sac.trainer import OffPolicyTrainer
+from rl_trading.agents.sac import SACAgent
+from rl_trading.training.buffer import ReplayBuffer
+from rl_trading.configs.data_classes import ModelParameters, OffPolicyConfig
+from rl_trading.training.trainer import OffPolicyTrainer
 
 
 class DummyLogger:

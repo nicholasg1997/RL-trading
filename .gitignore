@@ -13,3 +13,4 @@ data/processed/*
 plots/*
 !plots/.gitkeep
 /experimenting.ipynb
+/docs/

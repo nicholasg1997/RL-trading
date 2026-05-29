@@ -1,5 +1,5 @@
-from .configs.data_classes import OffPolicyConfig
-from .agents.sac import SACAgent
+from ..configs.data_classes import OffPolicyConfig
+from ..agents.sac import SACAgent
 from .buffer import Buffer
 from pathlib import Path
 
