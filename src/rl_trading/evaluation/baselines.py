@@ -46,7 +46,7 @@ class BaseBaseline(ABC):
 				turnover = float(np.abs(w - drifted_weights).sum())
 
 			cost = turnover * self.transaction_cost_rate
-			gross_return = float(np.dot(w, self.benchmark_returns[t]))
+			gross_return = float(np.dot(w, self.asset_returns[t]))
 			net_return = gross_return - cost
 			portfolio_value *= (1.0 + net_return)
 
@@ -59,6 +59,7 @@ class BaseBaseline(ABC):
 				"transaction_cost": cost,
 				"weights": w.copy(),
 				"benchmark_return": float(self.benchmark_returns[t]),
+				"raw_reward": net_return - float(self.benchmark_returns[t]),
 			})
 
 			active_weights = w.copy()
@@ -68,7 +69,7 @@ class BaseBaseline(ABC):
 
 class SPYBuyAndHold(BaseBaseline):
 
-	def get_weights(self, t: int) -> np.ndarray:
+	def get_weights(self, t: int, drifted_weights: np.ndarray) -> np.ndarray:
 		return np.zeros(self.n_assets)
 
 	def run(self) -> pd.DataFrame:
@@ -88,6 +89,7 @@ class SPYBuyAndHold(BaseBaseline):
 				"transaction_cost": 0.0,
 				"weights": np.zeros(self.n_assets),
 				"benchmark_return": ret,
+
 			})
 
 		return pd.DataFrame(records)
