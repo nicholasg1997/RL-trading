@@ -7,7 +7,7 @@ PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 def load_data():
 	features = pd.read_csv(PROCESSED_DIR / "features.csv", index_col="Date", parse_dates=True)
 	asset_returns = pd.read_csv(PROCESSED_DIR / "asset_returns.csv", index_col="Date", parse_dates=True)
-	benchmark_returns = pd.read_csv(PROCESSED_DIR / "benchmark_returns.csv", index_col="Date", parse_dates=True)
+	benchmark_returns = pd.read_csv(PROCESSED_DIR / "benchmark_returns.csv", index_col="Date", parse_dates=True).squeeze()
 
 	return features, asset_returns, benchmark_returns
 

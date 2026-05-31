@@ -45,7 +45,7 @@ def process_raw_data():
 	for ticker in ASSET_TICKERS:
 		asset_returns[ticker] = processed[ticker]['Close'].pct_change(1)
 
-	benchmark_returns = processed[BENCHMARK_TICKER]['Close'].pct_change(1)
+	benchmark_returns = processed[BENCHMARK_TICKER]['Close'].pct_change(1).reindex(aligned_dates)
 	asset_returns = asset_returns.reindex(aligned_dates)
 
 	engineered.to_csv(PROCESSED_DIR / "features.csv")

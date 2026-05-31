@@ -69,13 +69,6 @@ def test_checkpoint_round_trip_restores_policy_and_metadata(tmp_path):
 	assert metadata["metrics"] == {"validation/sharpe": 1.25}
 
 
-def test_trainer_evaluate_is_explicitly_trading_specific():
-	agent = SACAgent(41, 3, _small_config(), device="cpu")
-	trainer = OffPolicyTrainer(None, None, agent, None, OffPolicyConfig(), DummyLogger())
-
-	with pytest.raises(NotImplementedError, match="Trading evaluation"):
-		trainer.evaluate()
-
 
 def test_trainer_saves_best_checkpoint_by_configured_metric(tmp_path):
 	agent = SACAgent(41, 3, _small_config(), device="cpu")

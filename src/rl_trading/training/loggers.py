@@ -1,4 +1,5 @@
 from abc import ABC
+from torch.utils.tensorboard import SummaryWriter
 
 
 class BaseLogger(ABC):
@@ -28,3 +29,19 @@ class CompositeLogger(BaseLogger):
 	def close(self):
 		for logger in self.loggers:
 				logger.close()
+
+
+
+class TensorBoardLogger(BaseLogger):
+	def __init__(self, log_dir: str):
+		self.writer = SummaryWriter(log_dir=log_dir)
+
+	def log_scalar(self, key: str, value: float, step: int):
+		self.writer.add_scalar(key, value, step)
+
+	def log_dict(self, metrics: dict[str, float], step: int):
+		for key, value in metrics.items():
+			self.writer.add_scalar(key, value, step)
+			
+	def close(self):
+		self.writer.close()
