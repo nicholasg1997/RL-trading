@@ -1,7 +1,10 @@
 from ..configs.data_classes import OffPolicyConfig
+from ..evaluation.metrics import compute_portfolio_metrics
 from ..agents.sac import SACAgent
 from .buffer import Buffer
 from pathlib import Path
+import pandas as pd
+import numpy as np
 
 
 class OffPolicyTrainer:
@@ -73,13 +76,64 @@ class OffPolicyTrainer:
 			self.logger.log_dict(metrics, step)
 
 	def evaluate(self) -> dict[str, float]:
-		raise NotImplementedError(
-			"Trading evaluation is not implemented yet. It should run deterministic "
-			"validation episodes and return metrics such as validation/sharpe, "
-			"validation/max_drawdown, validation/portfolio_return, average_turnover, "
-			"average_gross_exposure, and transaction_costs."
-		)
+		env = self.eval_env
+		agent = self.agent
 
+		obs, info = env.reset()
+
+		# We start tracking history, beginning with the starting state (t0)
+		# to ensure initial portfolio value and date are aligned.
+		records = [{
+			"date": env.dates[env._t0],
+			"gross_return": 0.0,
+			"net_return": 0.0,
+			"portfolio_value": 1.0,
+			"turnover": 0.0,
+			"transaction_cost": 0.0,
+			"weights": np.zeros(env.n_assets),
+			"benchmark_return": 0.0,
+			"gross_exposure": 0.0,
+		}]
+
+		truncated = False
+		terminated = False
+
+		while not (terminated or truncated):
+			# Select deterministic actions during evaluation (no exploration noise)
+			action = agent.select_action(obs, deterministic=True)
+
+			obs, reward, terminated, truncated, info = env.step(action)
+
+			# Map environment keys to the baseline / metrics schema
+			records.append({
+				"date": info["date"],
+				"gross_return": info["portfolio_return"],  # environment portfolio_return is gross return
+				"net_return": info["net_return"],
+				"portfolio_value": info["portfolio_value"],
+				"turnover": info["turnover"],
+				"transaction_cost": info["transaction_cost"],
+				"weights": info["weights"],
+				"benchmark_return": info["benchmark_return"],
+				"gross_exposure": info["gross_exposure"],  # tracked for logger
+			})
+
+		# Convert steps to DataFrame
+		df = pd.DataFrame(records)
+
+		# Calculate standard metrics using metrics.py
+		metrics = compute_portfolio_metrics(df)
+
+		# Map raw metrics to the exact keys expected by logger & config.best_metric
+		eval_metrics = {
+			"validation/sharpe": metrics["sharpe_ratio"],
+			"validation/max_drawdown": metrics["max_drawdown"],
+			"validation/portfolio_return": metrics["annualized_return"],
+			"validation/average_turnover": metrics["avg_daily_turnover"],
+			"validation/average_gross_exposure": float(df["gross_exposure"].mean()),
+			"validation/transaction_costs": metrics["total_transaction_costs"],
+		}
+
+		return eval_metrics
 	def _log_eval_metrics(self, metrics: dict[str, float], step: int):
 		if not hasattr(self.logger, "log_scalar"):
 			return
