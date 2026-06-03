@@ -87,7 +87,7 @@ def test_end_to_end_integration(tmp_path):
 	)
 
 	n_assets = train_asset_returns_np.shape[1]
-	obs_dim = train_features_scaled.shape[1] + n_assets + 8
+	obs_dim = train_env.observation_space.shape[0]
 	
 	agent_config = ModelParameters(
 		hidden_dims=(32, 32),

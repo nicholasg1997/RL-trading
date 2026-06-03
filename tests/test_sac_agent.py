@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import torch
 
 from rl_trading.agents.sac import SACAgent
 from rl_trading.training.buffer import ReplayBuffer
@@ -48,6 +49,16 @@ def test_sac_update_runs_with_finite_losses():
 	assert set(metrics) == {"critic_loss", "actor_loss", "alpha_loss", "alpha"}
 	assert all(np.isfinite(value) for value in metrics.values())
 	assert metrics["alpha"] > 0
+
+
+def test_sac_discount_mask_treats_terminated_or_truncated_as_done():
+	agent = SACAgent(4, 2, _small_config(), device="cpu")
+	terminated = torch.tensor([[0.0], [1.0], [0.0], [1.0]])
+	truncated = torch.tensor([[0.0], [0.0], [1.0], [1.0]])
+
+	mask = agent._discount_mask(terminated, truncated)
+
+	torch.testing.assert_close(mask, torch.tensor([[1.0], [0.0], [0.0], [0.0]]))
 
 
 def test_checkpoint_round_trip_restores_policy_and_metadata(tmp_path):

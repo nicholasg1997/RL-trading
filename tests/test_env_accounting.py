@@ -9,6 +9,7 @@ N_ASSETS = 3
 N_FEATURES = 33
 T = 400
 EPISODE_LENGTH = 126
+OBS_DIM = N_FEATURES + N_ASSETS + len(TradingEnv.PORTFOLIO_STATE_KEYS)
 
 
 @pytest.fixture
@@ -40,7 +41,7 @@ def make_env(env_arrays, **kwargs):
 def test_reset_shapes_and_finite(env_arrays):
 	env = make_env(env_arrays)
 	obs, info = env.reset(seed=0)
-	assert obs.shape == (N_FEATURES + N_ASSETS + 8,)
+	assert obs.shape == (OBS_DIM,)
 	assert np.all(np.isfinite(obs))
 	assert env.observation_space.contains(obs)
 	assert info["portfolio_value"] == 1.0
@@ -53,13 +54,13 @@ def test_step_returns_gymnasium_tuple(env_arrays):
 	out = env.step(action)
 	assert len(out) == 5
 	obs, reward, terminated, truncated, info = out
-	assert obs.shape == (N_FEATURES + N_ASSETS + 8,)
+	assert obs.shape == (OBS_DIM,)
 	assert isinstance(reward, float)
 	assert isinstance(terminated, bool)
 	assert isinstance(truncated, bool)
 
 
-def test_zero_action_is_cash_and_reward_equals_minus_benchmark(env_arrays):
+def test_zero_action_is_cash_and_reward_is_zero(env_arrays):
 	env = make_env(env_arrays)
 	env.reset(seed=0)
 	t = env._t
@@ -68,10 +69,34 @@ def test_zero_action_is_cash_and_reward_equals_minus_benchmark(env_arrays):
 	assert info["turnover"] == 0.0
 	assert info["transaction_cost"] == 0.0
 	assert info["portfolio_return"] == 0.0
-	expected_raw = -env.benchmark_returns[t]
+	expected_raw = 0.0
 	np.testing.assert_allclose(info["raw_reward"], expected_raw, rtol=1e-6, atol=1e-8)
 	np.testing.assert_allclose(reward, expected_raw * env.reward_scale, rtol=1e-6, atol=1e-6)
 	assert info["cash"] == pytest.approx(1.0)
+
+
+def test_risk_adjusted_reward_exposes_penalty_components(env_arrays):
+	env = make_env(
+		env_arrays,
+		transaction_cost_rate=0.0,
+		reward_scale=1.0,
+		reward_mode="risk_adjusted",
+		downside_penalty=2.0,
+		drawdown_penalty=0.1,
+		turnover_penalty=0.0,
+	)
+	env.reset(seed=0)
+	t = env._t
+	env.asset_returns[t] = np.array([-0.02, 0.0, 0.0], dtype=np.float32)
+
+	_, reward, _, _, info = env.step(np.array([1.0, 0.0, 0.0], dtype=np.float32))
+
+	assert info["reward_log_return"] < 0.0
+	assert info["reward_downside_penalty"] > 0.0
+	assert info["reward_drawdown_penalty"] > 0.0
+	assert info["return_vol_ewma"] >= 0.0
+	assert info["downside_vol_ewma"] > 0.0
+	np.testing.assert_allclose(reward, info["raw_reward"], rtol=1e-6, atol=1e-8)
 
 
 def test_equal_weight_matches_manual_calculation(env_arrays):
