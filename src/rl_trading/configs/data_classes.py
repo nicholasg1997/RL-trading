@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from pathlib import Path
+
 import torch
 
 @dataclass
@@ -74,5 +76,5 @@ class OffPolicyConfig:
 	eval_trials: int = 1
 	update_after: int = 1_000
 	save_interval: int|None = None
-	checkpoint_dir: str = "./checkpoints"
+	checkpoint_dir: str|Path = "./checkpoints"
 	best_metric: str = "validation/sharpe"

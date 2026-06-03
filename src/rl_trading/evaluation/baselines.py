@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 import pandas as pd
+from datetime import datetime
 
 
 class BaseBaseline(ABC):
@@ -111,7 +112,7 @@ class MonthlyRebalanceEqualWeight(BaseBaseline):
 		if t == 0:
 			return np.full(self.n_assets, 1.0 / self.n_assets)
 
-		if self.dates[t].month != self.dates[t-1].month:
+		if datetime.fromisoformat(self.dates[t]).month != datetime.fromisoformat(self.dates[t-1]).month:
 			return np.full(self.n_assets, 1.0 / self.n_assets)
 
 		return drifted_weights
