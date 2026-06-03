@@ -5,6 +5,7 @@ from .buffer import Buffer
 from pathlib import Path
 import pandas as pd
 import numpy as np
+from ..configs.stock_universe import ASSET_TICKERS
 
 
 class OffPolicyTrainer:
@@ -23,6 +24,7 @@ class OffPolicyTrainer:
 	def train(self, total_steps: int):
 		episode_reward = 0.0
 		episode_length = 0
+		episode_stats = self._reset_episode_stats()
 
 		env = self.env
 
@@ -39,12 +41,15 @@ class OffPolicyTrainer:
 
 			episode_reward += rew
 			episode_length += 1
+			self._record_train_step(episode_stats, info)
 
 			if terminated or truncated:
 				self.logger.log_scalar("train/episode_reward", episode_reward, step)
 				self.logger.log_scalar("train/episode_length", episode_length, step)
+				self._log_train_episode(episode_stats, step)
 				episode_reward = 0.0
 				episode_length = 0
+				episode_stats = self._reset_episode_stats()
 				obs, _ = env.reset()
 			else:
 				obs = next_obs
@@ -67,6 +72,55 @@ class OffPolicyTrainer:
 				alpha_val = self.agent.alpha.item()
 				print(f"Step {step}/{total_steps} | Alpha: {alpha_val:.4f}", flush=True)
 
+	def _reset_episode_stats(self) -> dict[str, list[float]]:
+		return {
+			"raw_reward": [],
+			"net_return": [],
+			"portfolio_value": [],
+			"drawdown": [],
+			"turnover": [],
+			"transaction_cost": [],
+			"gross_exposure": [],
+			"reward_log_return": [],
+			"reward_downside_penalty": [],
+			"reward_drawdown_penalty": [],
+			"reward_turnover_penalty": [],
+		}
+
+	def _record_train_step(self, episode_stats: dict[str, list[float]], info: dict) -> None:
+		for key in episode_stats:
+			if key in info:
+				episode_stats[key].append(float(info[key]))
+
+	def _log_train_episode(self, episode_stats: dict[str, list[float]], step: int) -> None:
+		if not episode_stats["portfolio_value"]:
+			return
+
+		portfolio_values = np.asarray(episode_stats["portfolio_value"], dtype=np.float64)
+		net_returns = np.asarray(episode_stats["net_return"], dtype=np.float64)
+		turnover = np.asarray(episode_stats["turnover"], dtype=np.float64)
+		transaction_cost = np.asarray(episode_stats["transaction_cost"], dtype=np.float64)
+		gross_exposure = np.asarray(episode_stats["gross_exposure"], dtype=np.float64)
+
+		self.logger.log_scalar("train/episode_final_value", float(portfolio_values[-1]), step)
+		self.logger.log_scalar("train/episode_portfolio_return", float(portfolio_values[-1] - 1.0), step)
+		self.logger.log_scalar("train/episode_mean_net_return", float(net_returns.mean()), step)
+		self.logger.log_scalar("train/episode_net_return_std", float(net_returns.std(ddof=1)) if len(net_returns) > 1 else 0.0, step)
+		self.logger.log_scalar("train/episode_max_drawdown", float(max(episode_stats["drawdown"])), step)
+		self.logger.log_scalar("train/episode_avg_turnover", float(turnover.mean()), step)
+		self.logger.log_scalar("train/episode_total_transaction_cost", float(transaction_cost.sum()), step)
+		self.logger.log_scalar("train/episode_avg_gross_exposure", float(gross_exposure.mean()), step)
+
+		for key in (
+			"raw_reward",
+			"reward_log_return",
+			"reward_downside_penalty",
+			"reward_drawdown_penalty",
+			"reward_turnover_penalty",
+		):
+			values = episode_stats[key]
+			if values:
+				self.logger.log_scalar(f"train/episode_mean_{key}", float(np.mean(values)), step)
 
 
 	def _update(self, step: int):
@@ -126,12 +180,37 @@ class OffPolicyTrainer:
 		# Map raw metrics to the exact keys expected by logger & config.best_metric
 		eval_metrics = {
 			"validation/sharpe": metrics["sharpe_ratio"],
+			"validation/sortino": metrics["sortino_ratio"],
+			"validation/calmar": metrics["calmar_ratio"],
 			"validation/max_drawdown": metrics["max_drawdown"],
 			"validation/portfolio_return": metrics["annualized_return"],
+			"validation/final_value": metrics["final_value"],
+			"validation/annualized_volatility": metrics["annualized_volatility"],
+			"validation/win_rate": metrics["win_rate"],
 			"validation/average_turnover": metrics["avg_daily_turnover"],
 			"validation/average_gross_exposure": float(df["gross_exposure"].mean()),
 			"validation/transaction_costs": metrics["total_transaction_costs"],
 		}
+
+		benchmark_returns = pd.Series(df["benchmark_return"].to_numpy(dtype=np.float64))
+		benchmark_value = float((1.0 + benchmark_returns).prod())
+		n_days = len(df)
+		benchmark_annualized_return = float(benchmark_value ** (252 / n_days) - 1.0)
+		eval_metrics["validation/benchmark_return"] = benchmark_annualized_return
+		eval_metrics["validation/benchmark_final_value"] = benchmark_value
+		eval_metrics["validation/excess_annualized_return"] = (
+			eval_metrics["validation/portfolio_return"] - benchmark_annualized_return
+		)
+
+		weight_matrix = np.stack(df["weights"].values)  # shape (T, n_assets)
+		mean_weights = weight_matrix.mean(axis=0)  # average allocation per asset
+
+		for i, ticker in enumerate(ASSET_TICKERS):
+			eval_metrics[f"validation/weight_{ticker}"] = float(mean_weights[i])
+
+		# Also log weight concentration (Herfindahl index) — useful for detecting over-concentration
+		herfindahl = float(np.sum(mean_weights ** 2))
+		eval_metrics["validation/weight_concentration"] = herfindahl
 
 		return eval_metrics
 	def _log_eval_metrics(self, metrics: dict[str, float], step: int):

@@ -6,7 +6,7 @@ import torch
 
 # Import project configs
 from rl_trading.configs.stock_universe import ASSET_TICKERS
-from rl_trading.configs.splits import WALK_FORWARD_FOLDS
+from rl_trading.configs.splits import WALK_FORWARD_FOLDS, WALK_FORWARD_FOLDS_2
 from rl_trading.configs.data_classes import ModelParameters, OffPolicyConfig
 
 # Import data, env, agent, and trainer classes
@@ -26,7 +26,7 @@ def run_training(fold_idx: int = 3, total_steps: int = 100_000):
 	features, asset_returns, benchmark_returns = load_data()
 
 	# 2. Get dates for the selected walk-forward fold
-	fold = WALK_FORWARD_FOLDS[fold_idx]
+	fold = WALK_FORWARD_FOLDS_2[fold_idx]
 	train_dates = fold["train"]
 	val_dates = fold["val"]
 
@@ -66,11 +66,15 @@ def run_training(fold_idx: int = 3, total_steps: int = 100_000):
 		asset_returns=train_assets_np,
 		benchmark_returns=train_bench_np,
 		dates=train_feat_raw.index,
-		episode_length=126,  # ~6 months
+		episode_length=252,
 		transaction_cost_rate=0.001,
 		max_gross_exposure=1.0,
 		allow_short=True,
 		reward_scale=100.0,
+		reward_mode="risk_adjusted",
+		downside_penalty=2.0,
+		drawdown_penalty=0.1,
+		turnover_penalty=0.0005,
 		mode="train"
 	)
 
@@ -80,17 +84,21 @@ def run_training(fold_idx: int = 3, total_steps: int = 100_000):
 		asset_returns=val_assets_np,
 		benchmark_returns=val_bench_np,
 		dates=val_feat_raw.index,
-		episode_length=len(val_feat_raw),  # Run full out-of-sample split
+		episode_length=len(val_feat_raw),
 		transaction_cost_rate=0.001,
 		max_gross_exposure=1.0,
 		allow_short=True,
 		reward_scale=100.0,
+		reward_mode="risk_adjusted",
+		downside_penalty=2.0,
+		drawdown_penalty=0.1,
+		turnover_penalty=0.0005,
 		mode="eval"
 	)
 
 	# 6. Instantiate Replay Buffer & Agent
 	n_assets = len(ASSET_TICKERS)
-	obs_dim = train_feat_scaled.shape[1] + n_assets + 8  # features + active weights + 8 portfolio metrics
+	obs_dim = train_env.observation_space.shape[0]
 
 	# Leverage MPS automatically on Apple Silicon
 	device = "mps" if torch.backends.mps.is_available() else "cpu"
@@ -103,7 +111,7 @@ def run_training(fold_idx: int = 3, total_steps: int = 100_000):
 		alpha_lr=3e-4,
 		gamma=0.99,
 		tau=0.005,
-		target_entropy=-1
+		target_entropy=-2.0
 	)
 
 	agent = SACAgent(
@@ -114,7 +122,7 @@ def run_training(fold_idx: int = 3, total_steps: int = 100_000):
 	)
 
 	buffer = ReplayBuffer(
-		buffer_size=100_000,
+		buffer_size=250_000,
 		obs_space=train_env.observation_space,
 		act_space=train_env.action_space,
 		device=device
@@ -132,15 +140,15 @@ def run_training(fold_idx: int = 3, total_steps: int = 100_000):
 	np.save(Path(checkpoint_dir) / "feature_scaler_std.npy", train_std.to_numpy())
 
 	trainer_config = OffPolicyConfig(
-		warmup_steps=2000,
-		update_after=2000,
+		warmup_steps=2_000,
+		update_after=2_000,
 		update_interval=1,
 		update_every=1,
 		batch_size=256,
-		eval_interval=5000,
+		eval_interval=5_000,
 		checkpoint_dir=checkpoint_dir,
 		best_metric="validation/sharpe",
-		save_interval=20000
+		save_interval=20_000
 	)
 
 	trainer = OffPolicyTrainer(

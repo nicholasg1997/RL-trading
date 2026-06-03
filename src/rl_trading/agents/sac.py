@@ -99,7 +99,7 @@ class SACAgent:
 			next_action, next_log_prob = self.actor(next_obs)
 			q1_next, q2_next = self.target_critic(next_obs, next_action)
 			q_next = torch.min(q1_next, q2_next) - self.alpha * next_log_prob
-			target_q = rew + (1 - terminated) * self.config.gamma * q_next
+			target_q = rew + self._discount_mask(terminated, truncated) * self.config.gamma * q_next
 
 		q1, q2 = self.critic(obs, actions)
 		critic_loss = torch.mean((q1 - target_q) ** 2) + torch.mean((q2 - target_q) ** 2)
@@ -132,6 +132,10 @@ class SACAgent:
 			'alpha_loss': alpha_loss.item(),
 			'alpha': self.alpha.item()
 		}
+
+	def _discount_mask(self, terminated: torch.Tensor, truncated: torch.Tensor) -> torch.Tensor:
+		done = torch.clamp(terminated + truncated, max=1.0)
+		return 1.0 - done
 
 	def _soft_update(self):
 		for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
